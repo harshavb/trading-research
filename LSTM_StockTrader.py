@@ -5,7 +5,8 @@
 # create a model (ctrl+f "create_model"). For this example, it is sequential (LSTM). Add/remove layers, change # of cells, etc.
 # Optional: Add/Remove indicators, change % of cash to use each trade
 # Run program
-
+###
+# Ctrl-alt-S for python interpreter stuff
 
 ### KERAS AND TENSORFLOW
 # make the necessary imports
@@ -37,7 +38,7 @@ warnings.filterwarnings('ignore')
 ticker = 'SPY'  # The ticker we want to use
 start = datetime.datetime(2016, 1, 1)
 end = datetime.datetime(2023, 1, 1)
-test_size_percentage = .5   # The bot will be trained on the first x of the data, and tested on the next (1-x) of the data
+test_size_percentage = .8   # The bot will be trained on the first x of the data, and tested on the next (1-x) of the data
 
 # download ticker stock price from yahoo finance
 stock = yf.download(ticker, progress=True, actions=True, start=start, end=end)['Adj Close']
@@ -122,14 +123,10 @@ def create_model():
     # Modify the model's layers here
     nmodel = Sequential()
 
-    nmodel.add(Dense(32, activation='relu', input_dim=len(cols)))
-    nmodel.add(Dense(16, activation='relu'))
-    nmodel.add(Dense(8, activation='relu'))
-    nmodel.add(Dense(4, activation='relu'))
-    nmodel.add(Dense(2, activation='relu'))
+    nmodel.add(Dense(100, activation='relu', input_dim=len(cols)))
     nmodel.add(Dense(1, activation='sigmoid'))
 
-    nmodel.compile(loss='mean_squared_error', optimizer='adam', metrics=['accuracy'])    # 'rmsprop',
+    nmodel.compile(loss='mean_squared_error', optimizer='adam', metrics=['accuracy'])    # 'rms prop',
     return nmodel
 
 
