@@ -3,43 +3,57 @@
 # Gather Data from any ticker (I chose SPY) then select the date range you would like to train on
 # Select the test size percentage (default = .5)
 # create a model (ctrl+f "create_model"). For this example, it is sequential (LSTM). Add/remove layers, change # of cells, etc.
-# Optional: Add/Remove indicators, change % of cash to use each trade
+# Optional: Add/Remove indicators, change % of cash to use each trade, change commission
 # Run program
 ###
 # Ctrl-alt-S for python interpreter stuff
+import contextlib
+# import io
+# import os
 
 ### KERAS AND TENSORFLOW
 # make the necessary imports
 import numpy as np
-#import pytalib.indicators.base
+# import sys
+# import pytalib.indicators.base
 from matplotlib import pyplot as plt
 import pandas as pd
-#import seaborn as sns
+# import seaborn as sns
 import yfinance as yf
-#import warnings
+# import warnings
 import datetime
 import pyfolio as pf
+from pyfolio.timeseries import perf_stats
 import backtrader as bt
 from backtrader.feeds import PandasData
 import warnings
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
-#from keras import layers
+# from keras import layers
 from keras.layers import Dense  # , Dropout
 from keras.models import Sequential
 from talib import RSI, BBANDS, MACD
+
+##### START: USER-EDITABLE THINGS #####
+plotGraphs = False          # if true, plot all the graphs
+showModelSummary = False    # if true, displays a model summary consisting of layers, cells, type, etc.
+printReturnsVolatilityTrades = False   # if true, display returns and volatility values, as well as number of trades
+showRunOutput = False       # if true, displays the buys and sells of the model during runtime.
+printPortfolioStartEnd = False  # if true, prints the starting and ending values of the portfolio
+modelVerboseness = 0        # verbose = 0 means no progress bars (for epochs), 1 = show bars, 2 = show epoch number only.
+
+# ticker and the start and end dates for testing, as well as other values
+ticker = 'SPY'  # The ticker we want to use
+start = datetime.datetime(2016, 1, 1)   # year, month, day
+end = datetime.datetime(2023, 1, 1)
+test_size_percentage = .6  # The bot will be trained on the first x% of the data, and tested on the next (1-x)% of the data
+##### END: USER-EDITABLE THINGS #####
 
 # ignore warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 warnings.filterwarnings('ignore')
 
 ### DATA GATHERING
-# ticker and the start and end dates for testing, as well as other values
-ticker = 'SPY'  # The ticker we want to use
-start = datetime.datetime(2016, 1, 1)
-end = datetime.datetime(2023, 1, 1)
-test_size_percentage = .8   # The bot will be trained on the first x of the data, and tested on the next (1-x) of the data
-
 # download ticker stock price from yahoo finance
 stock = yf.download(ticker, progress=True, actions=True, start=start, end=end)['Adj Close']
 stock = pd.DataFrame(stock)
@@ -53,20 +67,21 @@ stock['direction'] = np.sign(stock['returns']).astype(int)
 stock.head(3)
 
 # visualize the closing price and daily returns
-fig, ax = plt.subplots(2, 1, sharex='all', figsize=(8, 4))     # True is the same as 'all'
-ax[0].plot(stock.close, label=f'{ticker} Adj Close')
-ax[0].set(title=f'{ticker} Closing Price', ylabel='Price')
-ax[0].grid(True)
-ax[0].legend()
+if plotGraphs:
+    fig, ax = plt.subplots(2, 1, sharex='all', figsize=(8, 4))  # True is the same as 'all'
+    ax[0].plot(stock.close, label=f'{ticker} Adj Close')
+    ax[0].set(title=f'{ticker} Closing Price', ylabel='Price')
+    ax[0].grid(True)
+    ax[0].legend()
 
-ax[1].plot(stock['returns'], label='Daily Returns')
-ax[1].set(title=f'{ticker} Daily Returns', ylabel='Returns')
-ax[1].grid(True)
-plt.legend()
+    ax[1].plot(stock['returns'], label='Daily Returns')
+    ax[1].set(title=f'{ticker} Daily Returns', ylabel='Returns')
+    ax[1].grid(True)
+    plt.legend()
 
-plt.tight_layout()
-plt.draw()
-# plt.savefig('images/chart1', dpi=300)
+    plt.tight_layout()
+    plt.draw()
+    # plt.savefig('images/chart1', dpi=300)
 
 # define the number of lags
 lags = [1, 2, 3, 4, 5]
@@ -123,10 +138,10 @@ def create_model():
     # Modify the model's layers here
     nmodel = Sequential()
 
-    nmodel.add(Dense(100, activation='relu', input_dim=len(cols)))
+    nmodel.add(Dense(10, activation='relu', input_dim=len(cols)))
     nmodel.add(Dense(1, activation='sigmoid'))
 
-    nmodel.compile(loss='mean_squared_error', optimizer='adam', metrics=['accuracy'])    # 'rms prop',
+    nmodel.compile(loss='mean_squared_error', optimizer='adam', metrics=['accuracy'])  # 'rms prop',
     return nmodel
 
 
@@ -141,8 +156,9 @@ train['direction_'] = np.where(train['direction'] > 0, 1, 0)
 # train_.head()
 # %%time
 # fit the model for training dataset
-r = model.fit(train_[cols], train['direction_'], batch_size=16, epochs=3, verbose=True)
-model.summary()
+r = model.fit(train_[cols], train['direction_'], batch_size=16, epochs=3, verbose=modelVerboseness)
+if showModelSummary:
+    model.summary()
 
 # normalized the test dataset
 mu, std = test.mean(), test.std()
@@ -150,10 +166,10 @@ test_ = (test - mu) / std
 # map market direction of (1,-1) to (1,0)
 test['direction_'] = np.where(test['direction'] > 0, 1, 0)
 # evaluate the model with test dataset
-model.evaluate(test_[cols], test['direction_'])
+model.evaluate(test_[cols], test['direction_'], verbose=modelVerboseness)
 
 # predict the direction and map it (1,0)
-pred = np.where(model.predict(test_[cols]) > 0.5, 1, 0)
+pred = np.where(model.predict(test_[cols], verbose=modelVerboseness) > 0.5, 1, 0)
 pred[:10].flatten()
 
 # based on prediction calculate the position for strategy
@@ -162,24 +178,25 @@ test['position_strategy'] = np.where(pred > 0, 1, -1)
 test['strategy_return'] = test['position_strategy'] * test['returns']
 # test.head()
 # calculate total return and std. deviation of each strategy
-print('\nTotal Returns:')
-print(test[['returns', 'strategy_return']].sum().apply(np.exp))
-print('\nAnnual Volatility:')
-print(test[['returns', 'strategy_return']].std() * 252 ** 0.5)
+if printReturnsVolatilityTrades:
+    print('\nTotal Returns:')
+    print(test[['returns', 'strategy_return']].sum().apply(np.exp))
+    print('\nAnnual Volatility:')
+    print(test[['returns', 'strategy_return']].std() * 252 ** 0.5)
 
-# number of trades over time for the strategy
-print('Number of trades = ', (test['position_strategy'].diff() != 0).sum())
+    # number of trades over time for the strategy
+    print('Number of trades = ', (test['position_strategy'].diff() != 0).sum())
 
 # plot cumulative returns
-fig, ax = plt.subplots(1, 1, sharex='all', figsize=(8, 4))
-ax.plot(test.returns.cumsum().apply(np.exp), linestyle='dashed', label=f'{ticker} Buy and Hold')
-ax.plot(test.strategy_return.cumsum().apply(np.exp), linestyle='dotted', label='Strategy')
-ax.set(title=f'{ticker} Buy and Hold vs. Strategy', ylabel='Cumulative Returns')
-ax.grid(True)
-ax.legend()
-
-plt.draw()
-# plt.savefig('images/chart2')
+if plotGraphs:
+    fig, ax = plt.subplots(1, 1, sharex='all', figsize=(8, 4))
+    ax.plot(test.returns.cumsum().apply(np.exp), linestyle='dashed', label=f'{ticker} Buy and Hold')
+    ax.plot(test.strategy_return.cumsum().apply(np.exp), linestyle='dotted', label='Strategy')
+    ax.set(title=f'{ticker} Buy and Hold vs. Strategy', ylabel='Cumulative Returns')
+    ax.grid(True)
+    ax.legend()
+    plt.draw()
+    #plt.savefig('images/chart2')
 
 # backtesting start and end dates
 start = test.index[0]
@@ -267,7 +284,7 @@ class MLStrategy(bt.Strategy):
         # report failed order
         elif order.status in [order.Canceled, order.Margin,
                               order.Rejected]:
-            #self.log('Order Failed')
+            # self.log('Order Failed')
             match order.status:
                 case order.Canceled:
                     self.log('Order canceled')
@@ -304,16 +321,24 @@ class MLStrategy(bt.Strategy):
 # instantiate SignalData class
 data = SignalData(dataname=prices)
 # instantiate Cerebro, add strategy, data, initial cash, commission and pyfolio for performance analysis
-cerebro = bt.Cerebro(stdstats=False, cheat_on_open=True)
+cerebro = bt.Cerebro(cheat_on_open=True)
 cerebro.addstrategy(MLStrategy)
 cerebro.adddata(data, name=ticker)
 cerebro.broker.setcash(100000.0)
 cerebro.broker.setcommission(commission=0.001)
 cerebro.addanalyzer(bt.analyzers.PyFolio, _name='pyfolio')
 # run the backtest
-print('Starting Portfolio Value: %.2f' % cerebro.broker.getvalue())
-backtest_result = cerebro.run()
-print('Final Portfolio Value: %.2f' % cerebro.broker.getvalue())
+if printPortfolioStartEnd:
+    print('Starting Portfolio Value: %.2f' % cerebro.broker.getvalue())
+
+if not showRunOutput:
+    with contextlib.redirect_stdout(None):
+        backtest_result = cerebro.run()
+else:
+    backtest_result = cerebro.run()
+
+if printPortfolioStartEnd:
+    print('Final Portfolio Value: %.2f' % cerebro.broker.getvalue())
 
 # Extract inputs for pyfolio
 strat = backtest_result[0]
@@ -329,29 +354,36 @@ benchmark_rets = benchmark_rets.filter(returns.index)
 benchmark_rets.name = f'{ticker}'
 benchmark_rets.head(2)
 
-# get performance statistics for strategy
-pf.show_perf_stats(returns)
+# get/print performance statistics for strategy # TODO save sharpe ratio into a text file
+myStatsSeries = perf_stats(returns=returns)
+mySharpe = myStatsSeries[3]
+print('Sharpe Ratio = {}'.format(mySharpe))
+# print('bruh' + mySharpe)
+# with open('output/some_output.txt', 'w') as sys.stdout:
+#    print(perf_stats(returns=returns).)
+
 
 # plot performance for strategy vs benchmark
-fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(14, 7), constrained_layout=True)
-axes = ax.flatten()
+if plotGraphs:
+    fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(14, 7), constrained_layout=True)
+    axes = ax.flatten()
 
-pf.plot_drawdown_periods(returns=returns, ax=axes[0])
-axes[0].grid(True)
-pf.plot_rolling_returns(returns=returns,
-                        factor_returns=benchmark_rets,
-                        ax=axes[1], title=f'Strategy vs {ticker}')
-axes[1].grid(True)
-pf.plot_drawdown_underwater(returns=returns, ax=axes[2])
-axes[2].grid(True)
-pf.plot_rolling_sharpe(returns=returns, ax=axes[3])
-axes[3].grid(True)
-# fig.suptitle('XXX', fontsize=16, y=0.990)
+    pf.plot_drawdown_periods(returns=returns, ax=axes[0])
+    axes[0].grid(True)
+    pf.plot_rolling_returns(returns=returns,
+                            factor_returns=benchmark_rets,
+                            ax=axes[1], title=f'Strategy vs {ticker}')
+    axes[1].grid(True)
+    pf.plot_drawdown_underwater(returns=returns, ax=axes[2])
+    axes[2].grid(True)
+    pf.plot_rolling_sharpe(returns=returns, ax=axes[3])
+    axes[3].grid(True)
+    # fig.suptitle('XXX', fontsize=16, y=0.990)
 
-plt.grid(True)
-plt.legend()
-plt.tight_layout()
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
 
-plt.draw()
-plt.show(block=True)
-# plt.savefig('images/chart3', dpi=300)
+    plt.draw()
+    plt.show(block=True)
+    # plt.savefig('images/chart3', dpi=300)
