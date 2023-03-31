@@ -26,16 +26,17 @@
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # 0-3: info, warning, and error messages get printed (0 = all, 3 = none)
 import contextlib
+import warnings
 import numpy as np
 from matplotlib import pyplot as plt
 import pandas as pd
+# noinspection PyUnresolvedReferences
 import yfinance as yf
 import datetime
 import pyfolio as pf
 from pyfolio.timeseries import perf_stats
 import backtrader as bt
 from backtrader.feeds import PandasData
-import warnings
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
 from keras.layers import Dense  # , Dropout
@@ -169,10 +170,26 @@ class MLStrategy(bt.Strategy):
                 self.sell(size=self.position.size)
 
 
-##### DATA GATHERING #####  # TODO figure out how to take data from a csv (to reduce dependence on download speed)
-# download ticker stock price from yahoo finance
-stock = yf.download(ticker, progress=False, actions=True, start=start, end=end)['Adj Close']
-stock = pd.DataFrame(stock)
+##### DATA GATHERING #####
+# read in csv file with all data including open, high, low, etc.
+stock_all = pd.read_csv("stock_data/" + ticker + ".csv", index_col=0)
+stock_all.index = pd.to_datetime(stock_all.index)   # convert index to DateTimeIndex
+
+# isolate adjusted close data (adjusted close accounts for dividends and splits)
+stock_ac = stock_all['Adj Close']
+stock_ac = stock_ac.squeeze()
+
+### This code below shows our data is in the right/wrong format (converting from csv changes metadata like index type)
+# download data from yahoo finance
+#stock_yf = yf.download(ticker, progress=False, actions=True, start=start, end=end)
+#stock_yf.to_csv("stock_data/SPY.csv")       # this saves yf data
+
+# print and compare information for inconsistencies. Information should match perfectly for program to work
+#stock_ac.info()
+#stockyf.info()
+
+# converting series -> dataframe to add additional columns
+stock = pd.DataFrame(stock_ac)
 stock.rename(columns={'Adj Close': 'close'}, inplace=True)
 
 # calculate daily log returns and market direction
@@ -227,6 +244,7 @@ if printModelSummary:
 
 ##### TESTING #####
 # normalize the test dataset
+# noinspection PyRedeclaration
 mu, std = test.mean(), test.std()
 test_ = (test - mu) / std
 # map market direction of (1,-1) to (1,0)
@@ -255,13 +273,13 @@ if printReturnsVolatilityTrades:
 
 # backtesting start and end dates
 if printPortfolioStartEnd:
-    start = test.index[0]
-    end = test.index[-1]
-    print(start)
-    print(end)
+    start_port = test.index[0]
+    end_port = test.index[-1]
+    print(start_port)
+    print(end_port)
 
-# fetch the daily pricing data from yahoo finance
-prices = yf.download(ticker, progress=False, actions=True, start=start, end=end)
+# fetch the daily pricing data
+prices = stock_all
 
 ##### BACKTRADER #####
 # rename the columns as needed for Backtrader
