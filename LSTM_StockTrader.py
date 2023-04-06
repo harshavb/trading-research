@@ -13,6 +13,9 @@
 # Ctrl-alt-S for python interpreter stuff
 # use "noinspection" to disable warnings in certain places
 # talib (technical analysis library) requires some advanced setup, use Google to guide you.
+## Sharpe ratio = (return of portfolio - risk-free rate) / standard deviation of portfolio's excess return
+# Why Sharpe? Because it measures portfolio value against risk-free rates, so even a high-value portfolio after a trading session...
+# can mean that there was a lot of risk involved to get there.
 
 # TODO Figure out what should be modified each loop. Also figure out how to do it.
 # ideas so far:
@@ -57,11 +60,15 @@ printReturnsVolatilityTrades = False   # if true, display returns and volatility
 printRunOutput = False       # if true, displays the buys and sells of the model during runtime.
 printPortfolioStartEnd = True  # if true, prints the starting and ending values and dates of the portfolio
 
+# Looping
+loopsAll = 10   # Number of times to loop without changing ANY parameters. "Master" loop.
+
 # ticker and the start and end dates for testing, as well as other values
 ticker = 'SPY'  # The ticker we want to use
 start = datetime.datetime(2013, 1, 1)   # year, month, day
 end = datetime.datetime(2023, 1, 1)
 test_size_percentage = .6  # The bot will be trained on 1-x percent of data, and tested on x percent of data.
+startingPortfolioValue = 100000.0
 
 # Define the model to use for our machine learning trading model
 def create_model():
@@ -73,6 +80,7 @@ def create_model():
     nmodel = Sequential()
 
     nmodel.add(Dense(10, activation='relu', input_dim=len(cols)))
+    nmodel.add(Dense(10, activation='relu'))
     nmodel.add(Dense(1, activation='sigmoid'))
 
     nmodel.compile(loss='mean_squared_error', optimizer='adam', metrics=['accuracy'])
@@ -189,7 +197,7 @@ stock_ac = stock_ac.squeeze()
 stock = pd.DataFrame(stock_ac)
 stock.rename(columns={'Adj Close': 'close'}, inplace=True)
 
-# calculate daily log returns and market direction (log returns are symmetric)
+# calculate daily log returns and market direction (log returns are symmetric: +50% then -50% will return the original portfolio value)
 stock['returns'] = np.log(stock / stock.shift(1))
 stock.dropna(inplace=True)
 stock['direction'] = np.sign(stock['returns']).astype(int)
@@ -227,7 +235,7 @@ portfolioEndValues = []
 
 ########## Everything below here should be contained in loops that change the parameters in every iteration. ##########
 
-for i in range(50):     # Top-level for loop that does everything x times to obtain the averages of results
+for i in range(loopsAll):     # Top-level for loop that does everything x times to obtain the averages of results
     print('***** Iteration #{} *****'.format(i+1))
     ##### TRAINING #####
     # split the dataset in training and test datasets
@@ -314,8 +322,8 @@ for i in range(50):     # Top-level for loop that does everything x times to obt
     cerebro = bt.Cerebro(cheat_on_open=True)
     cerebro.addstrategy(MLStrategy)
     cerebro.adddata(data, name=ticker)
-    cerebro.broker.setcash(100000.0)
-    cerebro.broker.setcommission(commission=0.001)
+    cerebro.broker.setcash(startingPortfolioValue)
+    cerebro.broker.setcommission(commission=0.001)  # maybe remove commission?
     cerebro.addanalyzer(bt.analyzers.PyFolio, _name='pyfolio')
 
     # run the backtest
@@ -348,13 +356,12 @@ for i in range(50):     # Top-level for loop that does everything x times to obt
     benchmark_rets = benchmark_rets.filter(returns.index)
     benchmark_rets.name = f'{ticker}'
 
-    # get/print performance statistics for strategy # TODO save sharpe ratio(s) into a file
+    # get/print performance statistics for strategy # TODO (optional) save statistics into a file/display to console
     myStatsSeries = perf_stats(returns=returns)
     mySharpe = myStatsSeries[3]
     mySharpe = round(mySharpe, 3)
     sharpeResults.append(mySharpe)
     print('Sharpe Ratio = {}\n'.format(mySharpe))
-
 
     # print('test' + mySharpe)
     # with open('output/some_output.txt', 'w') as sys.stdout:
@@ -406,7 +413,15 @@ for i in range(50):     # Top-level for loop that does everything x times to obt
         plt.show(block=True)    # we use show here to block the program from ending
     # If we loop, everything up to the end of the file should be looped (make sure to turn off graphs though).
 
+# Print lots of stuff.
 print('Sharpe Ratio Results: {}'.format(sharpeResults))
 print('Min/Max/Avg SR: {}/{}/{}'.format(min(sharpeResults), max(sharpeResults), sum(sharpeResults)/len(sharpeResults)))
 print('Final Portfolio Values: {}'.format(portfolioEndValues))
 print('Min/Max/Avg FPV: {}/{}/{}'.format(min(portfolioEndValues), max(portfolioEndValues), sum(portfolioEndValues)/len(portfolioEndValues)))
+
+# Plot that shows sharpe ratio against portfolio value. Looks like a quadratic curve.
+plt.scatter(sharpeResults, portfolioEndValues)
+plt.ticklabel_format(style="plain")
+plt.xlabel('sharpe')
+plt.ylabel('portfolio value')
+plt.show()
