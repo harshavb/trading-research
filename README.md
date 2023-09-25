@@ -1,7 +1,7 @@
 # Trading Research: Risk Reward Analysis in Trading Strategies
 Capstone Project for CSE 485
 
-TA Model
+Models
 - Predicts a stock's closing price using OHLV and technical analysis indicators. Used for backtesting a model's performance in price prediction.
 - The model also predicts one day into the future, relative to the dataset.
 PS Model
