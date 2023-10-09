@@ -1,13 +1,13 @@
 # Trading Research: Risk Reward Analysis in Trading Strategies
 Capstone Project for CSE 485
 
-Models
-- Predicts a stock's closing price using OHLV and technical analysis indicators. Used for backtesting a model's performance in price prediction.
-- The model also predicts one day into the future, relative to the dataset.
-PS Model
-- Predicts a stock's closing price using other stock's prices. Used for backtesting a model's performance in price prediction.
-- The model also predicts one day into the future, relative to the dataset.
-MS-TA Model
-- Forecasts a stock's closing price using TA. Used to forecast a given amount of days into the future.
-MS-PS
-- Forecasts a stock's closing price using other stock's prices. Used to forecast a given amount of days into the future.
+## Overview
+The BacktestTransformer and ForecastTransformer are two models which can make stock price predictions. They can be fed stock data along with any other relevant data, as long as it is prepared beforehand. In the given folders, there are two types of data. The first type deal with technical analysis, and the second type combines the history of many stocks (parallel stock). The models are robust, so many other types of data can be fed, but we mainly focus on stocks for now.
+
+### BacktestTransformer
+- Univariate/Multivariate Model which can be fed data to make single step predictions for a target variable.
+- The predictions and ground truth are plotted together so you can see how the model's predictions compare with real data.
+
+### ForecastTransformer
+- Univariate/Multivariate Model which can be fed data to predict multiple steps into the future.
+- The predictions go past the ground truth data, so they can not be evaluated against real data.
