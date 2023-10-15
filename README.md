@@ -13,3 +13,6 @@ The BacktestTransformer and ForecastTransformer are two models which can make st
 - Univariate/Multivariate Model which can be fed data to predict multiple steps into the future.
 - The predictions go past the ground truth data, so they can not be evaluated against real data.
 - Less focus since forecasting deep into the future is less helpful.
+
+#### Notes
+- The data extraction tools (and their example data downloads) can be found in BacktestTransformer.
